@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Tab } from "@headlessui/react";
 import { Loader2 } from "lucide-react";
 import PopularList from "./PopularList";
@@ -16,34 +16,75 @@ const App = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [animeOffset, setAnimeOffset] = useState(0);
+  const [mangaOffset, setMangaOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+
+  const observer = useRef();
+  const lastItemRef = useCallback(
+    (node) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          loadMore();
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [loading, hasMore]
+  );
+
+  const fetchData = async (type, offset) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/${type}?sort=-averageRating&page[limit]=20&page[offset]=${offset}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch data");
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      setError(error.message);
+      return null;
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [animeResponse, mangaResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/anime?sort=-averageRating&page[limit]=20`),
-          fetch(`${API_BASE_URL}/manga?sort=-averageRating&page[limit]=20`),
-        ]);
+    const initialFetch = async () => {
+      setLoading(true);
+      const animeData = await fetchData("anime", 0);
+      const mangaData = await fetchData("manga", 0);
 
-        if (!animeResponse.ok || !mangaResponse.ok) {
-          throw new Error("Failed to fetch data");
-        }
-
-        const animeData = await animeResponse.json();
-        const mangaData = await mangaResponse.json();
-
+      if (animeData && mangaData) {
         setAnimeList(animeData.data);
         setMangaList(mangaData.data);
-      } catch (error) {
-        setError(error.message);
-      } finally {
-        setLoading(false);
+        setAnimeOffset(20);
+        setMangaOffset(20);
       }
+      setLoading(false);
     };
 
-    fetchData();
+    initialFetch();
   }, []);
+
+  const loadMore = async () => {
+    setLoading(true);
+    const newAnimeData = await fetchData("anime", animeOffset);
+    const newMangaData = await fetchData("manga", mangaOffset);
+
+    if (newAnimeData && newMangaData) {
+      setAnimeList((prev) => [...prev, ...newAnimeData.data]);
+      setMangaList((prev) => [...prev, ...newMangaData.data]);
+      setAnimeOffset((prev) => prev + 20);
+      setMangaOffset((prev) => prev + 20);
+      setHasMore(newAnimeData.data.length > 0 || newMangaData.data.length > 0);
+    }
+    setLoading(false);
+  };
 
   const handleItemClick = (item) => {
     setSelectedItem(item);
@@ -51,16 +92,14 @@ const App = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8 text-center">Anime Explorer</h1>
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
-        </div>
-      ) : error ? (
+      <h1 className="text-3xl font-bold mb-8 text-center">
+        Anime and Manga Explorer
+      </h1>
+      {error ? (
         <div className="text-red-500 text-center">{error}</div>
       ) : (
         <Tab.Group>
-          <Tab.List className="flex space-x-1 rounded-xl bg-blue-900/20 p-1">
+          <Tab.List className="flex space-x-1 rounded-xl bg-blue-900/20 p-1 mb-4">
             <Tab
               className={({ selected }) =>
                 classNames(
@@ -72,7 +111,7 @@ const App = () => {
                 )
               }
             >
-              Popular Anime
+              Popular Anime & Manga
             </Tab>
             <Tab
               className={({ selected }) =>
@@ -88,7 +127,7 @@ const App = () => {
               Details
             </Tab>
           </Tab.List>
-          <Tab.Panels className="mt-2">
+          <Tab.Panels>
             <Tab.Panel>
               <div className="space-y-8">
                 <div>
@@ -96,6 +135,7 @@ const App = () => {
                   <PopularList
                     items={animeList}
                     onItemClick={handleItemClick}
+                    lastItemRef={lastItemRef}
                   />
                 </div>
                 <div>
@@ -103,6 +143,7 @@ const App = () => {
                   <PopularList
                     items={mangaList}
                     onItemClick={handleItemClick}
+                    lastItemRef={lastItemRef}
                   />
                 </div>
               </div>
@@ -112,6 +153,11 @@ const App = () => {
             </Tab.Panel>
           </Tab.Panels>
         </Tab.Group>
+      )}
+      {loading && (
+        <div className="flex justify-center items-center mt-4">
+          <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
+        </div>
       )}
     </div>
   );

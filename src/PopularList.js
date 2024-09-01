@@ -1,15 +1,16 @@
 import React from "react";
 
-const PopularList = ({ items, onItemClick }) => {
+const PopularList = ({ items, onItemClick, lastItemRef }) => {
   if (!items || items.length === 0) {
     return <div className="text-center">No items to display.</div>;
   }
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
           key={item.id}
+          ref={index === items.length - 1 ? lastItemRef : null}
           className="cursor-pointer hover:opacity-75 transition-opacity duration-200"
           onClick={() => onItemClick(item)}
         >
